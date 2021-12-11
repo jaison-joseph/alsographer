@@ -1,3 +1,5 @@
+// toy program to figure out indicing of the matrices within each node
+
 #include <mpi.h>
 #include <iostream>
 #include <vector>
@@ -22,7 +24,7 @@ int returnValue;
 string message;
 
 // the MPI methods that need to be called before calling any other MPI methods
-int initialize(int argc, char* argv[]) {
+void initialize(int argc, char* argv[]) {
 
     MPI_Init(NULL, NULL);
 
@@ -50,7 +52,9 @@ int initialize(int argc, char* argv[]) {
             for (int i = 0 ; i < remainder ; ++i) {
                 sizes[i] += 1;
             }
-            lastLargeRow = remainder - 1; // rows [0, ..., remainder-1] will have a size of edge_count_/node_count_
+            // rows [0, ..., remainder-1] will have a size of edge_count_/node_count_ + 1
+            // the remaining rows will have a size of edge_count_/node_count_
+            lastLargeRow = remainder - 1; 
         }
         cout << "\n sizes: ";
         for (auto& i : sizes) {
@@ -77,7 +81,7 @@ void readAFile() {
     }
 }
 
-vector<int>& receiveNumbers() {
+vector<int> receiveNumbers() {
     vector<int> numbers;
     while(true) {
         
@@ -90,16 +94,44 @@ void sendNumbers() {
     ifstream f("edgelist.txt");
     string line;
     bigInt_c n1, n2, temp;
-    int rank;
-    // MPI_UNSIGNED_LONG_LONG == unsigned long long int 
+    int rank, master_row, master_column, row, column;
     if (f.is_open()) {
         while (f >> line) {
             n1 = stoull(line);
             f >> line;
             n2 = stoull(line);
-            if (n1 + n2 > (lastLargeRow+1) * sizes[0]) {
-                
+            master_row = 0;   // the row wrt the entire graph into which the element goes into 
+            temp = n1;     // will contain the row of the subsquare that it goes to 
+            for (auto& sz : sizes) {
+                if (sz > temp) {
+                    break;
+                }
+                temp -= sz;
+                ++master_row;
             }
+            row = temp;
+            master_column = 0;   // the column wrt the entire graph into which the element goes into 
+            temp = n2;
+            for (auto& sz : sizes) {
+                if (sz > temp) {
+                    break;
+                }
+                temp -= sz;
+                ++master_column;
+            }
+            column = temp;
+            rank = (master_row + master_column) % node_count_;
+            cout << "n1: " << n1 
+                 << " n2: " << n2
+                 << " goes to process #: " << rank
+                 << " arr[" << master_row << ']'
+                 <<  '[' << row << ']' 
+                 << '[' << column << ']'
+                 << " && " 
+                 << " arr[" << master_column << ']'
+                 << '[' << column << ']'
+                 <<  '[' << row << ']' 
+                 << '\n';
         }
     }
     cout << "\n\n";
@@ -121,8 +153,8 @@ int main(int argc, char* argv[]) {
     if (world_rank_ == 0) {
         sendNumbers();
     }
-    else {
-        nums = receiveNumbers();
-    }
+    // else {
+    //     nums = receiveNumbers();
+    // }
     cleanup();
 }
