@@ -17,7 +17,7 @@ bigInt_c edge_count_;
 
 // graph stuff 
 vector<bigInt_c> sizes;     // a vector that keeps track of the width of each row 
-bigInt_c lastLargeRow;
+vector<vector<vector<int>>> arr;   // the vector that stores the parts of the graph
 
 // function call status 
 int returnValue;
@@ -29,45 +29,80 @@ void initialize(int argc, char* argv[]) {
     MPI_Init(NULL, NULL);
 
     // getting the # processes and 'this' processes' rank
-    MPI_Comm_size(MPI_COMM_WORLD, &node_count_);
+    MPI_Comm_size(MPI_COMM_WORLD, &node_count_);  
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank_);
 
-
-    // setting up graph stuff 
+    // !!!!!!!!!!!!!
+    // because process #0 is exclusively for managing other threads
+    node_count_ -= 1; 
+    // if we dont have the correct number of arguments
+    if (argc != 2) {
+        returnValue = -1;
+        message = string(" expected 1 argument: number of edges in the graph");
+        return;
+    }
+    // if we only have 1 core to work with 
+    if (node_count_ <= 0) {
+        returnValue = -1;
+        message = string("this program requires at least 2 cores to run");
+        return;
+    }
+    returnValue = 0;
+    edge_count_ = stoull(argv[1]);
+    
+    //deciding the distribution of edges across nodes
+    if (node_count_ > edge_count_) {
+        sizes = vector<bigInt_c> (1, node_count_);
+    }
+    else {
+        sizes = vector<bigInt_c> (node_count_, edge_count_/node_count_);
+        bigInt_c remainder = edge_count_ % node_count_;
+        for (int i = 0 ; i < remainder ; ++i) {
+            sizes[i] += 1;
+        }
+    }
     if (world_rank_ == 0) {
-        if (argc != 2) {
-            returnValue = -1;
-            message = string(" expected 1 argument: number of edges in the graph");
-            return;
-        }
-        edge_count_ = stoull(argv[1]);
-        
-        //deciding the distribution of edges across nodes
-        if (node_count_ > edge_count_) {
-            sizes = vector<bigInt_c> (1, node_count_);
-        }
-        else {
-            sizes = vector<bigInt_c> (node_count_, edge_count_/node_count_);
-            bigInt_c remainder = edge_count_ % node_count_;
-            for (int i = 0 ; i < remainder ; ++i) {
-                sizes[i] += 1;
-            }
-            // rows [0, ..., remainder-1] will have a size of edge_count_/node_count_ + 1
-            // the remaining rows will have a size of edge_count_/node_count_
-            lastLargeRow = remainder - 1; 
-        }
         cout << "\n sizes: ";
         for (auto& i : sizes) {
             cout << i << ", ";
         }
+    }
 
-        returnValue = 0;
+    // since we need to ensure that the sizes array is filled up all right
+    // MPI_Barrier(MPI_COMM_WORLD);
+    // allocating space and initializing memory of the distributed graph
+    if (world_rank_ != 0) {
+        int i, j;
+        i = 0;
+        j = world_rank_ - 1;
+        for (int k = 0 ; k < node_count_ ; ++k) {
+            vector<vector<int>> foo;
+            for (int it = 0; it < sizes[i] ; ++it) {
+                foo.push_back(vector<int> (sizes[j], 0));
+            }
+            arr.push_back(foo);
+            ++i;
+            --j;
+            if (j < 0) {
+                j = node_count_ - 1;
+            }
+        }
     }
 }
 
 // cleaning up MPI funciton call 
 void cleanup() {
     MPI_Finalize();
+}
+
+// display memory layout across nodes
+void displayLayout() {
+    if (world_rank_ != 0) {
+        cout << "\n" <<world_rank_ << " : ";
+        for (auto& i : arr) {
+            cout << '[' << i.size() << "][" << i[0].size() << "], ";
+        }
+    }
 }
 
 // can multiple files read at the same time?
@@ -149,10 +184,10 @@ int main(int argc, char* argv[]) {
         cleanup();
         exit(0);
     }
-    vector<int> nums;
-    if (world_rank_ == 0) {
-        sendNumbers();
-    }
+    displayLayout();
+    // if (world_rank_ == 0) {
+    //     sendNumbers();
+    // }
     // else {
     //     nums = receiveNumbers();
     // }
