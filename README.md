@@ -11,7 +11,7 @@
 ## development roadmap
 - how to store the graph (done)
 - how to figure out indices of an element in the graph when distributed (done)
-- sending information to initialize and fill up the parts of the graph in each node (initalize done)
+- sending information to initialize and fill up the parts of the graph in each node (done)
 - distributing the hotVector and the countVector
 - updating the graph (add and delete a connection)
 
