@@ -3,13 +3,13 @@
 #include <mpi.h>
 #include <iostream>
 #include <vector>
+#include <utility>
 #include <fstream>
 #include <string>
 
 using namespace std;
 
 typedef unsigned long long int bigInt_c;
-#define bigInt_MPI MPI_UNSIGNED_LONG_LONG
 
 // MPI stuff 
 int node_count_, world_rank_, num_workers_;
@@ -18,6 +18,8 @@ bigInt_c edge_count_;
 // graph stuff 
 vector<bigInt_c> sizes;     // a vector that keeps track of the width of each row 
 vector<vector<vector<int>>> arr;   // the vector that stores the parts of the graph
+vector<int> remainingNodes;
+vector<int> nodeCount;
 
 // function call status 
 int returnValue;
@@ -90,6 +92,9 @@ void initialize(int argc, char* argv[]) {
             }
         }
     }
+    else {
+        // nodeCount = vector<int> (, )
+    }
 }
 
 // cleaning up MPI funciton call 
@@ -127,15 +132,46 @@ void displayValues() {
     }
 }
 
-// can multiple files read at the same time?
-void readAFile() {
-    ifstream f("input.txt");
-    string line;
-    if (f.is_open()) {
-        while (f >> line) {
-            cout << "\n" << world_rank_ << " : " << line << "\n";
+// returns a tuple containing rank and all indices to store an element 
+// input: the indices of the element in the main graph (i -> n1, j -> n2)
+void getIndices(bigInt_c n1, bigInt_c n2, int packet[5]) {
+    bool flag1, flag2;
+    int rank, master_row, master_column, row, column;
+    flag1 = flag2 = true;
+    master_row = 0;   
+    master_column = 0;   
+    for (auto& sz : sizes) {
+        if (flag1) {
+            if (n1 < sz) {
+                flag1 = false;
+            }
+            else {
+                n1 -= sz;
+                ++master_row;
+            }
+        }
+        if (flag2) {
+            if (n2 < sz) {
+                flag2 = false;
+            }
+            else {
+                n2 -= sz;
+                ++master_column;
+                continue;
+            }
+        }
+        if ((flag1 || flag2) == false) {
+            break;
         }
     }
+    row = n1;
+    column = n2;
+    rank = (master_row + master_column) % num_workers_;
+    packet[0] = rank;
+    packet[1] = master_row;
+    packet[2] = master_column;
+    packet[3] = row;
+    packet[4] = column;
 }
 
 void receiveNumbers() {
@@ -179,7 +215,7 @@ void sendNumbers() {
     string line;
     bigInt_c n1, n2, temp;
     int rank, master_row, master_column, row, column;
-    int packet[4];
+    int result[5];
     if (!f.is_open()) {
         message = string("could not open file 'edgelist.txt'");
         returnValue = -1;
@@ -189,27 +225,14 @@ void sendNumbers() {
         n1 = stoull(line);
         f >> line;
         n2 = stoull(line);
-        master_row = 0;   // the row wrt the entire graph into which the element goes into 
-        temp = n1;     // will contain the row of the subsquare that it goes to 
-        for (auto& sz : sizes) {
-            if (sz > temp) {
-                break;
-            }
-            temp -= sz;
-            ++master_row;
-        }
-        row = temp;
-        master_column = 0;   // the column wrt the entire graph into which the element goes into 
-        temp = n2;
-        for (auto& sz : sizes) {
-            if (sz > temp) {
-                break;
-            }
-            temp -= sz;
-            ++master_column;
-        }
-        column = temp;
-        rank = (master_row + master_column) % num_workers_;
+        
+        // output format: [rank, master_row, master_column, row, column]
+        getIndices(n1, n2, result);
+        rank = result[0];
+        master_row = result[1];
+        master_column = result[2];
+        row = result[3];
+        column = result[4];
         cout << "n1: " << n1 
              << " n2: " << n2
              << " goes to process #: " << rank
@@ -221,12 +244,8 @@ void sendNumbers() {
              << '[' << column << ']'
              << '[' << row << ']' 
              << '\n';
-        packet[0] = master_row;
-        packet[1] = master_column;
-        packet[2] = row;
-        packet[3] = column;
         MPI_Send(
-            packet,
+            result+1, // packet + 1 since packet[0] is the rank 
             4, 
             MPI_INT,
             rank+1,
@@ -234,16 +253,16 @@ void sendNumbers() {
             MPI_COMM_WORLD
         );
     }
-    cout << "\n inished \"sending the packets\" \n";
+    cout << "\n finished \"sending the packets\" \n";
     // sending out the packets that signal the receiving processes to stop 
-    packet[0] = -1;
-    packet[1] = -1;
-    packet[2] = -1;
-    packet[3] = -1;
+    result[0] = -1;
+    result[1] = -1;
+    result[2] = -1;
+    result[3] = -1;
     for (int i = 1 ; i < node_count_ ; ++i) {
         //MPI_Send(it is done; wrap it up bois)
         MPI_Send(
-            packet,
+            result,
             4, 
             MPI_INT,
             i,
@@ -263,8 +282,70 @@ MPI_Send(
     MPI_Comm communicator);     // MPI_COMM_WORLD
  */
 
+void addConnections(vector<pair<bigInt_c, bigInt_c>> newConnections) {
+    if (world_rank_ == 0) { 
+        bigInt_c n1, n2, temp;
+        int rank, master_row, master_column, row, column;
+        int packet[5];
+        for (auto& ij : newConnections) {
+            n1 = get<0>(ij);
+            n2 = get<1>(ij);
+            // [rank, master_row, master_column, row, column]
+            getIndices(n1, n2, packet);
+            // rank = packet[0];
+            // master_row = packet[1];
+            // master_column = packet[2];
+            // row = packet[3];
+            // column = packet[4];
+            // cout << "n1: " << n1 
+            //     << " n2: " << n2
+            //     << " goes to process #: " << rank
+            //     << " arr[" << master_row << ']'
+            //     << '[' << row << ']' 
+            //     << '[' << column << ']'
+            //     << " && " 
+            //     << " arr[" << master_column << ']'
+            //     << '[' << column << ']'
+            //     << '[' << row << ']' 
+            //     << '\n';
+            MPI_Send(
+                packet+1,
+                4, 
+                MPI_INT,
+                packet[0]+1,
+                0,
+                MPI_COMM_WORLD
+            );
+        }
+        packet[0] = -1;
+        packet[1] = -1;
+        packet[2] = -1;
+        packet[3] = -1;
+        for (int i = 1 ; i < node_count_ ; ++i) {
+            //MPI_Send(it is done; wrap it up bois)
+            MPI_Send(
+                packet,
+                4, 
+                MPI_INT,
+                i,
+                0,
+                MPI_COMM_WORLD
+            );
+        }
+    }
+    else {
+        receiveNumbers();
+    }
+}
+
 int main(int argc, char* argv[]) {
     initialize(argc, argv);
+
+    // connections to add to the graph 
+    vector<pair<bigInt_c, bigInt_c>> newConnections;
+
+    // connections to add to the graph 
+    vector<pair<bigInt_c, bigInt_c>> oldConnections;
 
     // if the above function had a hiccup
     if (returnValue < 0) {
@@ -281,17 +362,30 @@ int main(int argc, char* argv[]) {
     // displayLayout();
 
     // sending 'em out 
-    if (world_rank_ == 0) {
-        sendNumbers();
-    }
-    else {
-        receiveNumbers();
-    }
+    // if (world_rank_ == 0) {
+    //     sendNumbers();
+    // }
+    // else {
+    //     receiveNumbers();
+    // }
 
+    // all the processes need to receive the numbers from p0
+    // so, we place a barrier taht wait for all processes 
     MPI_Barrier(MPI_COMM_WORLD);
+
+    // only process 0 gets the connections onto its vector 
+    if (world_rank_ == 0) {
+        newConnections.push_back(pair<bigInt_c, bigInt_c>(0, 1));
+        newConnections.push_back(pair<bigInt_c, bigInt_c>(2, 3));
+        newConnections.push_back(pair<bigInt_c, bigInt_c>(6, 8));
+    }    
+
+    addConnections(newConnections);
 
     // have we done it correctly?
     displayValues();
+
+    // delete a connection 
 
     // mpi cleanup stuff 
     cleanup();
