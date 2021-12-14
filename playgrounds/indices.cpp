@@ -18,8 +18,8 @@ bigInt_c edge_count_;
 // graph stuff 
 vector<bigInt_c> sizes;     // a vector that keeps track of the width of each row 
 vector<vector<vector<int>>> arr;   // the vector that stores the parts of the graph
-vector<int> remainingNodes;
-vector<int> nodeCount;
+vector<bool> remainingNodes;        // basically our oneHotVector
+vector<int> nodeCount;              // keeps a count of the number of ndoes connected to each edge?
 
 // function call status 
 int returnValue;
@@ -93,7 +93,8 @@ void initialize(int argc, char* argv[]) {
         }
     }
     else {
-        // nodeCount = vector<int> (, )
+        remainingNodes = vector<bool> (edge_count_, false);
+        nodeCount = vector<int>(edge_count_, 0);
     }
 }
 
@@ -196,6 +197,34 @@ void receiveNumbers() {
     }
 }
 
+// the function run by the workers to delete nodes; smart design first
+void deleteNumbers() {
+    //[master_row, master_column, start row, end row, start column, end column]
+    int packet[6];      
+    MPI_Status status;
+    while(true) {
+        MPI_Recv(
+            packet,
+            6,
+            MPI_INT,
+            0, 
+            0,
+            MPI_COMM_WORLD,
+            &status
+        );
+        // if (packet[0] == packet[1] == packet[2] == packet[3] ==  -1) {
+        if (packet[0] == -1) {
+            break;
+        }
+        for (int j = packet[4] ; j < packet[5] ; ++j) {
+            arr [packet[0]] [packet[1]] [j] = 0;
+        }
+        for (int j = packet[2] ; j < packet[3] ; ++j) {
+            arr [packet[1]] [j] [packet[2]] = 0;
+        }
+    }
+}
+
 /*
 int MPI_Recv(
     void *buf, 
@@ -225,6 +254,11 @@ void sendNumbers() {
         n1 = stoull(line);
         f >> line;
         n2 = stoull(line);
+
+        remainingNodes[n1] = true;
+        nodeCount[n1] += 1;
+        remainingNodes[n2] = true;
+        nodeCount[n2] += 1;
         
         // output format: [rank, master_row, master_column, row, column]
         getIndices(n1, n2, result);
@@ -282,7 +316,7 @@ MPI_Send(
     MPI_Comm communicator);     // MPI_COMM_WORLD
  */
 
-void addConnections(vector<pair<bigInt_c, bigInt_c>> newConnections) {
+void addConnections(vector<pair<bigInt_c, bigInt_c>>& newConnections) {
     if (world_rank_ == 0) { 
         bigInt_c n1, n2, temp;
         int rank, master_row, master_column, row, column;
@@ -338,6 +372,71 @@ void addConnections(vector<pair<bigInt_c, bigInt_c>> newConnections) {
     }
 }
 
+
+void removeConnections(vector<pair<bigInt_c>& oldConnections) {
+    if (world_rank_ == 0) { 
+        bigInt_c temp, index;
+        int* receivePacket = malloc(sizes[0] * sizeof(int));
+        int rank, start_row, start_column, row, column, end_row, end_column;
+        // [rank, master_row, master_column, row, column, width]
+        int packet[6]; 
+        for (auto& n : oldConnections) {
+            // if the node is already switched off; we dont need to do anything 
+            if (remainingNodes[n] == false) {
+                continue;
+            }
+            // [rank, master_row, master_column, row, column]
+            index = 0;
+            for (auto& sz: sizes) {
+                getIndices(n, index, packet);
+                packet[5] = sz - packet[3];
+                MPI_Send(
+                    packet+1,
+                    5, 
+                    MPI_INT,
+                    packet[0]+1,
+                    0,
+                    MPI_COMM_WORLD
+                );
+                MPI_Recv(
+                    packet,
+                    sz,
+                    MPI_INT,
+                    0, 
+                    0,
+                    MPI_COMM_WORLD,
+                    &status
+                );
+                for (int i = 0 ; i < sz ; ++i) {
+                    nodeCount[index + i] -= 1;
+                    if (nodeCount)
+                }
+                index += sz;
+            }
+        }
+        packet[0] = -1;
+        packet[1] = -1;
+        packet[2] = -1;
+        packet[3] = -1;
+        for (int i = 1 ; i < node_count_ ; ++i) {
+            //MPI_Send(it is done; wrap it up bois)
+            MPI_Send(
+                packet,
+                4, 
+                MPI_INT,
+                i,
+                0,
+                MPI_COMM_WORLD
+            );
+        }
+        free(receivePacket);
+    }
+    else {
+        deleteNumbers();
+    }
+}
+
+
 int main(int argc, char* argv[]) {
     initialize(argc, argv);
 
@@ -345,7 +444,7 @@ int main(int argc, char* argv[]) {
     vector<pair<bigInt_c, bigInt_c>> newConnections;
 
     // connections to add to the graph 
-    vector<pair<bigInt_c, bigInt_c>> oldConnections;
+    vector<bigInt_c> oldConnections;
 
     // if the above function had a hiccup
     if (returnValue < 0) {
@@ -385,7 +484,15 @@ int main(int argc, char* argv[]) {
     // have we done it correctly?
     displayValues();
 
+    // only process 0 gets the connections onto its vector 
+    if (world_rank_ == 0) {
+        oldConnections.push_back(1);
+        oldConnections.push_back(3);
+        oldConnections.push_back(8);
+    }   
+
     // delete a connection 
+    removeConnections(oldConnections);
 
     // mpi cleanup stuff 
     cleanup();
