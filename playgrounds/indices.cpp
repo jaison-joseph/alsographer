@@ -199,13 +199,15 @@ void receiveNumbers() {
 
 // the function run by the workers to delete nodes; smart design first
 void deleteNumbers() {
-    //[master_row, master_column, start row, end row, start column, end column]
-    int packet[6];      
+    //[master_row, master_column, row, column, width]
+    int packet[5], index;
+    int sendPacketSize = sizes[0];
+    int* sendPacket = (int*)(malloc(sendPacketSize * sizeof(int)));      
     MPI_Status status;
     while(true) {
         MPI_Recv(
             packet,
-            6,
+            5,
             MPI_INT,
             0, 
             0,
@@ -216,13 +218,30 @@ void deleteNumbers() {
         if (packet[0] == -1) {
             break;
         }
-        for (int j = packet[4] ; j < packet[5] ; ++j) {
-            arr [packet[0]] [packet[1]] [j] = 0;
+        index = 0;
+        for (int j = 0 ; j < packet[4] ; ++j) {
+            if (arr [packet[0]] [packet[2]] [j] == 1) {
+                if (j != packet[3]) {
+                    sendPacket[index] = j;
+                    index++;
+                }
+            }
+            arr [packet[0]] [packet[2]] [j] = 9;
+            arr [packet[1]] [packet[3]] [j] = 9;
         }
-        for (int j = packet[2] ; j < packet[3] ; ++j) {
-            arr [packet[1]] [j] [packet[2]] = 0;
+        if (index != sendPacketSize) {
+            sendPacket[index] = -1;
         }
+        MPI_Send(
+            sendPacket,
+            sendPacketSize, 
+            MPI_INT,
+            0,
+            0,
+            MPI_COMM_WORLD
+        );
     }
+    free(sendPacket);
 }
 
 /*
@@ -373,10 +392,12 @@ void addConnections(vector<pair<bigInt_c, bigInt_c>>& newConnections) {
 }
 
 
-void removeConnections(vector<pair<bigInt_c>& oldConnections) {
+void removeConnections(vector<bigInt_c>& oldConnections) {
     if (world_rank_ == 0) { 
+        MPI_Status status;
         bigInt_c temp, index;
-        int* receivePacket = malloc(sizes[0] * sizeof(int));
+        int receivePacketSize = sizes[0];
+        int* receivePacket = (int*)(malloc(receivePacketSize * sizeof(int)));
         int rank, start_row, start_column, row, column, end_row, end_column;
         // [rank, master_row, master_column, row, column, width]
         int packet[6]; 
@@ -400,7 +421,7 @@ void removeConnections(vector<pair<bigInt_c>& oldConnections) {
                 );
                 MPI_Recv(
                     packet,
-                    sz,
+                    receivePacketSize,
                     MPI_INT,
                     0, 
                     0,
@@ -408,8 +429,13 @@ void removeConnections(vector<pair<bigInt_c>& oldConnections) {
                     &status
                 );
                 for (int i = 0 ; i < sz ; ++i) {
+                    if (i == -1) {
+                        break;
+                    }
                     nodeCount[index + i] -= 1;
-                    if (nodeCount)
+                    if (nodeCount[index + i] == 0) {
+                        remainingNodes[index + i] = false;
+                    }
                 }
                 index += sz;
             }
@@ -479,21 +505,23 @@ int main(int argc, char* argv[]) {
         newConnections.push_back(pair<bigInt_c, bigInt_c>(6, 8));
     }    
 
-    addConnections(newConnections);
+    // addConnections(newConnections);
 
-    // have we done it correctly?
-    displayValues();
 
     // only process 0 gets the connections onto its vector 
     if (world_rank_ == 0) {
         oldConnections.push_back(1);
-        oldConnections.push_back(3);
-        oldConnections.push_back(8);
+        // oldConnections.push_back(3);
+        // oldConnections.push_back(8);
     }   
 
     // delete a connection 
     removeConnections(oldConnections);
 
+    // have we done it correctly?
+    MPI_Barrier(MPI_COMM_WORLD);
+    displayValues();
+    
     // mpi cleanup stuff 
     cleanup();
 }

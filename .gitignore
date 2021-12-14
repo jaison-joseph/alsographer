@@ -4,6 +4,7 @@
 *.out
 core
 vgcore
+    // MPI_Barrier(MPI_COMM_WORLD);
 a
 b
 /shamburaj
