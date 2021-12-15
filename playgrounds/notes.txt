@@ -25,3 +25,12 @@
 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 
 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 
 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 
+
+Abstract
+Introduction
+Your Algorithm and Methodology
+Software Design and Implementation  
+Experimental results
+Discussion
+Conclusion
+References
