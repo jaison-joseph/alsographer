@@ -131,6 +131,16 @@ void displayValues() {
         cout << "\n ------------------------- ";
         cout << "\n ------------------------- \n";
     }
+    else {
+        cout << "\n printing node count";
+        for (auto& i : nodeCount) {
+            cout << i << ", ";
+        }
+        cout << "\n printing node count";
+        for (auto i : remainingNodes) {
+            cout << (i ? "true" : "false") << ", ";
+        }
+    }
 }
 
 // returns a tuple containing rank and all indices to store an element 
@@ -234,23 +244,28 @@ void deleteNumbers() {
         if (packet[0] == -1) {
             break;
         }
+        cout << "\n printing apcket: " << world_rank_ << ", ";
+        for (int i = 0 ; i < 5 ; ++i) {
+            cout << packet[i] << ", ";
+        }
         index = 0;
+        //[master_row, master_column, row, column, width]
         for (int j = 0 ; j < packet[4] ; ++j) {
-            if (arr [packet[0]] [packet[2]] [j] == 1) {
+            if (arr [packet[0]] [j] [packet[3]] == 1) {
                 sendPacket[index] = j;
                 index++;
             }
             cout << "\n deleting " 
              << " @ process #: " << world_rank_
              << " arr[" << packet[0] << ']'
-             << '[' << packet[2] << ']' 
              << '[' << j << ']'
+             << '[' << packet[3] << ']' 
              << " && " 
              << " arr[" << packet[1] << ']'
-             << '[' << j << ']'
-             << '[' << packet[3] << ']';
-            arr [packet[0]] [packet[2]] [j] = 0;
-            arr [packet[1]] [j] [packet[3]] = 0;
+             << '[' << packet[3] << ']'
+             << '[' << j << ']';
+            arr [packet[0]] [j] [packet[3]] = 0;
+            arr [packet[1]] [packet[3]] [j] = 0;
         }
         if (index != sendPacketSize) {
             sendPacket[index] = -1;
@@ -279,8 +294,7 @@ int MPI_Recv(
 );
 */
 
-// p0 sends numbers to other processors 
-// this function must only be run by the master thread; or just a single thread 
+// reads edgelist.txt and loads the numbers and sends to worker processes
 void loadNumbers() {
     if (world_rank_ == 0) {
         ifstream f("edgelist.txt");
@@ -299,6 +313,11 @@ void loadNumbers() {
             n1 = stoull(line);
             f >> line;
             n2 = stoull(line);
+
+            // remainingNodes[n1] = true;
+            // nodeCount[n1] += 1;
+            // remainingNodes[n2] = true;
+            // nodeCount[n2] += 1;
             
             // output format: [rank, master_row, master_column, row, column]
             getIndices(n1, n2, result);
@@ -307,17 +326,17 @@ void loadNumbers() {
             master_column = result[2];
             row = result[3];
             column = result[4];
-            cout << "n1: " << n1 
-                << " n2: " << n2
-                << " goes to process #: " << rank
-                << " arr[" << master_row << ']'
-                << '[' << row << ']' 
-                << '[' << column << ']'
-                << " && " 
-                << " arr[" << master_column << ']'
-                << '[' << column << ']'
-                << '[' << row << ']' 
-                << '\n';
+            // cout << "n1: " << n1 
+            //     << " n2: " << n2
+            //     << " goes to process #: " << rank
+            //     << " arr[" << master_row << ']'
+            //     << '[' << row << ']' 
+            //     << '[' << column << ']'
+            //     << " && " 
+            //     << " arr[" << master_column << ']'
+            //     << '[' << column << ']'
+            //     << '[' << row << ']' 
+            //     << '\n';
             MPI_Send(
                 result+1, // packet + 1 since packet[0] is the rank 
                 4, 
@@ -337,13 +356,14 @@ void loadNumbers() {
             );
             if (receivePacket == 1) {
                 nodeCount[n1] += 1;
-                nodeCount[n2] += 1;
+                if (n1 != n2) {
+                    nodeCount[n2] += 1;
+                }
                 remainingNodes[n1] = true;
                 remainingNodes[n2] = true;
             }
             
         }
-        cout << "\n finished \"sending the packets\" \n";
         // sending out the packets that signal the receiving processes to stop 
         result[0] = -1;
         result[1] = -1;
@@ -360,15 +380,6 @@ void loadNumbers() {
                 MPI_COMM_WORLD
             );
         }
-        // 
-        cout << "\n printing node count";
-        for (auto& i : nodeCount) {
-            cout << i << ", ";
-        }
-        cout << "\n printing node count";
-        for (auto i : remainingNodes) {
-            cout << (i ? "true" : "false") << ", ";
-        }
     }
     else {
         receiveNumbers();
@@ -384,80 +395,6 @@ MPI_Send(
     int tag,                    // idk man; just make sure the value is the same on send and receive end 
     MPI_Comm communicator);     // MPI_COMM_WORLD
  */
-
-void addConnections(vector<pair<bigInt_c, bigInt_c>>& newConnections) {
-    if (world_rank_ == 0) { 
-        bigInt_c n1, n2, temp;
-        int rank, master_row, master_column, row, column;
-        int packet[5];
-        int receivePacket;
-        MPI_Status status;
-        for (auto& ij : newConnections) {
-            n1 = get<0>(ij);
-            n2 = get<1>(ij);
-            // [rank, master_row, master_column, row, column]
-            getIndices(n1, n2, packet);
-            // rank = packet[0];
-            // master_row = packet[1];
-            // master_column = packet[2];
-            // row = packet[3];
-            // column = packet[4];
-            // cout << "n1: " << n1 
-            //     << " n2: " << n2
-            //     << " goes to process #: " << rank
-            //     << " arr[" << master_row << ']'
-            //     << '[' << row << ']' 
-            //     << '[' << column << ']'
-            //     << " && " 
-            //     << " arr[" << master_column << ']'
-            //     << '[' << column << ']'
-            //     << '[' << row << ']' 
-            //     << '\n';
-            MPI_Send(
-                packet+1,
-                4, 
-                MPI_INT,
-                packet[0]+1,
-                0,
-                MPI_COMM_WORLD
-            );
-                MPI_Recv(
-                &receivePacket,
-                1,
-                MPI_INT,
-                packet[0]+1, 
-                0,
-                MPI_COMM_WORLD,
-                &status
-            );
-            if (receivePacket == 1) {
-                nodeCount[n1] += 1;
-                nodeCount[n2] += 1;
-                remainingNodes[n1] = false;
-                remainingNodes[n2] = false;
-            }
-        }
-        packet[0] = -1;
-        packet[1] = -1;
-        packet[2] = -1;
-        packet[3] = -1;
-        for (int i = 1 ; i < node_count_ ; ++i) {
-            //MPI_Send(it is done; wrap it up bois)
-            MPI_Send(
-                packet,
-                4, 
-                MPI_INT,
-                i,
-                0,
-                MPI_COMM_WORLD
-            );
-        }
-    }
-    else {
-        receiveNumbers();
-    }
-}
-
 
 void removeConnections(vector<bigInt_c>& oldConnections) {
     if (world_rank_ == 0) { 
@@ -476,8 +413,8 @@ void removeConnections(vector<bigInt_c>& oldConnections) {
             // [rank, master_row, master_column, row, column]
             index = 0;
             for (auto& sz: sizes) {
-                getIndices(n, index, packet);
-                packet[5] = sz - packet[3];
+                getIndices(index, n, packet);
+                packet[5] = sz;
                 MPI_Send(
                     packet+1,
                     5, 
@@ -499,7 +436,7 @@ void removeConnections(vector<bigInt_c>& oldConnections) {
                     if (packet[i] == -1) {
                         break;
                     }
-                    cout << "\n receiveid request to decrement vertex: " << index + packet[i];
+                    // cout << "\n received request to decrement vertex: " << index + packet[i];
                     nodeCount[index + packet[i]] -= 1;
                     if (nodeCount[index + packet[i]] == 0) {
                         remainingNodes[index + packet[i]] = false;
@@ -535,12 +472,11 @@ void removeConnections(vector<bigInt_c>& oldConnections) {
 
 
 int main(int argc, char* argv[]) {
+    
+    // MPI and memory stuff 
     initialize(argc, argv);
 
-    // connections to add to the graph 
-    vector<pair<bigInt_c, bigInt_c>> newConnections;
-
-    // connections to add to the graph 
+    // connections to remove from the graph 
     vector<bigInt_c> oldConnections;
 
     // if the above function had a hiccup
@@ -562,30 +498,16 @@ int main(int argc, char* argv[]) {
     
     // have we done it correctly?
     // MPI_Barrier(MPI_COMM_WORLD);
+    // cout << "\n after laoding rhe numbers \n";
     // displayValues();
 
-    if (false) {
-
-        // all the processes need to receive the numbers from p0
-        // so, we place a barrier taht wait for all processes 
-        MPI_Barrier(MPI_COMM_WORLD);
-
-        // only process 0 gets the connections onto its vector 
-        if (world_rank_ == 0) {
-            newConnections.push_back(pair<bigInt_c, bigInt_c>(0, 1));
-            newConnections.push_back(pair<bigInt_c, bigInt_c>(2, 3));
-            newConnections.push_back(pair<bigInt_c, bigInt_c>(6, 8));
-        }    
-
-        addConnections(newConnections);
-    }
-
-    if (false) {
+    if (true) {
     // only process 0 gets the connections onto its vector 
         if (world_rank_ == 0) {
+            // oldConnections.push_back(4);
             oldConnections.push_back(5);
             oldConnections.push_back(6);
-            oldConnections.push_back(7);
+            // oldConnections.push_back(7);
             // oldConnections.push_back(3);
             // oldConnections.push_back(8);
         }   
@@ -595,6 +517,7 @@ int main(int argc, char* argv[]) {
 
         // have we done it correctly?
         MPI_Barrier(MPI_COMM_WORLD);
+        cout << "\n after deleting the numbers \n";
         displayValues();
     }
 
