@@ -1,4 +1,3 @@
-// toy program to figure out indicing of the matrices within each node
 
 #include <mpi.h>
 #include <iostream>
@@ -103,6 +102,7 @@ void cleanup() {
     MPI_Finalize();
 }
 
+// DEBUG
 // display memory layout across nodes
 void displayLayout() {
     if (world_rank_ != 0) {
@@ -113,6 +113,7 @@ void displayLayout() {
     }
 }
 
+// DEBUG 
 // display values stored across nodes
 void displayValues() {
     if (world_rank_ != 0) {
@@ -282,18 +283,6 @@ void deleteNumbers() {
     free(sendPacket);
 }
 
-/*
-int MPI_Recv(
-    void *buf, 
-    int count, 
-    MPI_Datatype datatype,
-    int source, 
-    int tag, 
-    MPI_Comm comm, 
-    MPI_Status *status
-);
-*/
-
 // reads edgelist.txt and loads the numbers and sends to worker processes
 void loadNumbers() {
     if (world_rank_ == 0) {
@@ -386,15 +375,6 @@ void loadNumbers() {
     }
 }
 
-/**
-MPI_Send(
-    void* buf,                 // data 
-    int count,                  // size of the buffer (# of elements, not bytes)
-    MPI_Datatype datatype,      // type of data in void* data
-    int dest,                   // destination
-    int tag,                    // idk man; just make sure the value is the same on send and receive end 
-    MPI_Comm communicator);     // MPI_COMM_WORLD
- */
 
 void removeConnections(vector<bigInt_c>& oldConnections) {
     if (world_rank_ == 0) { 
@@ -407,9 +387,9 @@ void removeConnections(vector<bigInt_c>& oldConnections) {
         int packet[6]; 
         for (auto& n : oldConnections) {
             // if the node is already switched off; we dont need to do anything 
-            // if (remainingNodes[n] == false) {
-            //     continue;
-            // }
+            if (remainingNodes[n] == false) {
+                continue;
+            }
             // [rank, master_row, master_column, row, column]
             index = 0;
             for (auto& sz: sizes) {
@@ -495,11 +475,6 @@ int main(int argc, char* argv[]) {
 
     // reading the numbers from file 
     loadNumbers();
-    
-    // have we done it correctly?
-    // MPI_Barrier(MPI_COMM_WORLD);
-    // cout << "\n after laoding rhe numbers \n";
-    // displayValues();
 
     if (true) {
     // only process 0 gets the connections onto its vector 
