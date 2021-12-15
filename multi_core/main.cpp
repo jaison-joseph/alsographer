@@ -64,12 +64,6 @@ void initialize(int argc, char* argv[]) {
             sizes[i] += 1;
         }
     }
-    if (world_rank_ == 0) {
-        cout << "\n sizes: ";
-        for (auto& i : sizes) {
-            cout << i << ", ";
-        }
-    }
 
     // since we need to ensure that the sizes array is filled up all right
     // MPI_Barrier(MPI_COMM_WORLD);
@@ -476,25 +470,18 @@ int main(int argc, char* argv[]) {
     // reading the numbers from file 
     loadNumbers();
 
-    if (true) {
     // only process 0 gets the connections onto its vector 
-        if (world_rank_ == 0) {
-            // oldConnections.push_back(4);
-            oldConnections.push_back(5);
-            oldConnections.push_back(6);
-            // oldConnections.push_back(7);
-            // oldConnections.push_back(3);
-            // oldConnections.push_back(8);
-        }   
+    if (world_rank_ == 0) {
+        oldConnections.push_back(6);
+    }   
 
-        // delete a connection 
-        removeConnections(oldConnections);
+    // delete a connection 
+    removeConnections(oldConnections);
 
-        // have we done it correctly?
-        MPI_Barrier(MPI_COMM_WORLD);
-        cout << "\n after deleting the numbers \n";
-        displayValues();
-    }
+    // have we done it correctly?
+    MPI_Barrier(MPI_COMM_WORLD);
+    cout << "\n after deleting the numbers \n";
+    displayValues();
 
     // mpi cleanup stuff 
     cleanup();

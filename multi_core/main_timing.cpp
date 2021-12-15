@@ -435,32 +435,37 @@ int main(int argc, char* argv[]) {
     // reading the numbers from file 
     auto start = chrono::steady_clock::now();
     loadNumbers();
-    MPI_Barrier(MPI_COMM_WORLD);
     auto stop = chrono::steady_clock::now();
     if (world_rank_ == 0) {
         auto diff = stop - start;
-        cout << "\n execution time: " << chrono::duration <double, milli> (diff).count() << " ms" << endl;
+        cout << "\n all connections insert time: " << chrono::duration <double, milli> (diff).count() << " ms" << endl;
     }
 
 
-    if (false) {
+    if (true) {
     // only process 0 gets the connections onto its vector 
         if (world_rank_ == 0) {
             // oldConnections.push_back(4);
             oldConnections.push_back(5);
-            oldConnections.push_back(6);
+            // oldConnections.push_back(6);
             // oldConnections.push_back(7);
             // oldConnections.push_back(3);
             // oldConnections.push_back(8);
         }   
 
         // delete a connection 
+        start = chrono::steady_clock::now();
         removeConnections(oldConnections);
+        stop = chrono::steady_clock::now();
+        if (world_rank_ == 0) {
+            auto diff = stop - start;
+            cout << "\n single node remove time: " << chrono::duration <double, milli> (diff).count() << " ms" << endl;
+        }
 
         // have we done it correctly?
-        MPI_Barrier(MPI_COMM_WORLD);
-        cout << "\n after deleting the numbers \n";
-        displayValues();
+        // MPI_Barrier(MPI_COMM_WORLD);
+        // cout << "\n after deleting the numbers \n";
+        // displayValues();
     }
 
     // mpi cleanup stuff 
